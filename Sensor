@@ -13,7 +13,7 @@
 bool botonPresionado = false;
 
 void IRAM_ATTR botonISR() {
-  botonPresionado = true; // cuando presiono el botón marco el inicio para que lea la temperatura
+  botonPresionado = true; // cuando presiono el botón marco mi evento
 }
 
 void setup() {
@@ -28,10 +28,11 @@ void loop() {
   if (botonPresionado) {
     botonPresionado = false; // limpio el evento
     unsigned int lectura = analogRead(PIN_SENSOR);          // leo el ADC (0-4095)
-    float voltaje = lectura * (3.3 / 4095.0);      // paso a voltios
+    float voltaje = lectura * (5 / 4095.0);      // paso a voltios
     float temperatura = voltaje * 100.0;           // LM35: 10mV = 1°C
     Serial.print("Temperatura: ");
     Serial.print(temperatura);
     Serial.println(" °C");
   }
 }
+
