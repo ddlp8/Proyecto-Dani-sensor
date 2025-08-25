@@ -1,0 +1,37 @@
+// Proyecto Digital - Parte A
+// Lectura de sensor de temperatura LM35 con botón y ADC
+// Autora: Daniela López
+// Fecha: 17/08/2025
+
+#include <Arduino.h>
+
+// Pines
+#define PIN_SENSOR 34   // LM35 conectado al pin 34
+#define PIN_BOTON  15   // Botón en pin 15
+
+// Variables
+bool botonPresionado = false;
+
+void IRAM_ATTR botonISR() {
+  botonPresionado = true; // cuando presiono el botón marco el inicio para que lea la temperatura
+}
+
+void setup() {
+  Serial.begin(115200);         // comunicación serial
+  pinMode(PIN_SENSOR, INPUT);   // pin del sensor como entrada
+  pinMode(PIN_BOTON, INPUT_PULLUP); // botón con resistencia interna
+  attachInterrupt(PIN_BOTON, botonISR, FALLING); // interrupción al presionar
+  Serial.println("Listo: Presiona el botón para leer la temperatura.");
+}
+
+void loop() {
+  if (botonPresionado) {
+    botonPresionado = false; // limpio el evento
+    unsigned int lectura = analogRead(PIN_SENSOR);          // leo el ADC (0-4095)
+    float voltaje = lectura * (3.3 / 4095.0);      // paso a voltios
+    float temperatura = voltaje * 100.0;           // LM35: 10mV = 1°C
+    Serial.print("Temperatura: ");
+    Serial.print(temperatura);
+    Serial.println(" °C");
+  }
+}
