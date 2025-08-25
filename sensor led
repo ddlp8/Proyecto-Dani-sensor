@@ -1,100 +1,59 @@
-// Proyecto Digital - Parte A y B 
-// A: Leer LM35 solo cuando presiono un botón (con antirrebote)
+// Proyecto Digital - Parte A y B
+// A: Leer LM35 solo cuando presiono un botón (idéntico a Parte A)
 // B: Semáforo de temperatura con 3 LEDs por PWM
 
+#include <Arduino.h>
 
-#include <Arduino.h>  // Librería base de Arduino para ESP32
+// 1) PINES (mismos nombres que Parte A donde aplica)
+#define PIN_SENSOR   34   // LM35 conectado al pin 34
+#define PIN_BOTON    15   // Botón en pin 15
+#define PIN_ROJO     19
+#define PIN_VERDE    23
+#define PIN_AMARILLO 21
 
-
-// 1) DEFINICIÓN DE PINES
-
-#define PIN_SENSOR   34   // Entrada analógica para LM35 (ADC1_CH6). El LM35 da ~10 mV por cada °C.
-#define PIN_BOTON    15   // Botón. Lo usaré con pull-up interno (botón a GND).
-#define PIN_ROJO     21   
-#define PIN_VERDE    23   
-#define PIN_AMARILLO 22   
-
-
-// 2) CONFIGURACIÓN DE PWM 
-
-// Resolución 10 bits -> valores de 0 a 1023 en ledcWrite.
-// Frecuencia 50 Hz 
+// 2) PWM (sin cambiar nombres del sensor/botón)
 #define canalrojo      8
 #define canalverde     9
 #define canalamarillo 10
 #define freqPWM       50
 #define resPWM        10   // 10 bits => 0..1023
 
+// 3) VARIABLES (exactamente como Parte A para el botón)
+bool botonPresionado = false;  // MISMO NOMBRE Y TIPO QUE EN PARTE A
 
-// 3) VARIABLES GLOBALES
-
-// Estas variables controlan el evento del botón con antirrebote por tiempo.
-volatile bool botonEvento = false;         // La ISR marca "true" cuando presiono el botón.
-volatile unsigned long ultimoTiempo = 0;   // Última vez (ms) que acepté una pulsación válida.
-const unsigned long DEBOUNCE_MS = 150;     // Ventana de antirrebote (si hay rebotes dentro de 150 ms, los ignoro).
-
-float temperatura = 0;  // Aquí guardo la temperatura calculada en °C cada vez que presiono el botón.
-
-
-// 4) ISR DEL BOTÓN CON ANTIRREBOTE
-
-// Esta función se ejecuta automáticamente cuando hay flanco de bajada en el pin del botón.
-// La marco IRAM_ATTR porque corre en interrupción en ESP32.
+// 4) ISR (exacta en lógica: solo marca el flag)
 void IRAM_ATTR botonISR() {
-  unsigned long ahora = millis();              // Momento actual en ms
-  if (ahora - ultimoTiempo > DEBOUNCE_MS) {    // Si pasó suficiente tiempo, considero la pulsación como válida
-    botonEvento = true;                        // Marco que hay un evento pendiente para el loop()
-    ultimoTiempo = ahora;                      // Actualizo el timestamp para el próximo filtro
-  }
+  botonPresionado = true; // cuando presiono el botón marco mi evento
 }
 
-
-// 5) INICIALIZACIÓN DE LOS TRES LEDs (PWM)
-
-// Creo tres canales PWM y “engancho” cada canal al pin correspondiente.
-// Los dejo apagados al inicio (duty = 0).
+// 5) Inicializar LEDs (PWM)
 void initLeds() {
-  // Rojo
   ledcSetup(canalrojo, freqPWM, resPWM);
   ledcAttachPin(PIN_ROJO, canalrojo);
   ledcWrite(canalrojo, 0);
 
-  // Verde
   ledcSetup(canalverde, freqPWM, resPWM);
   ledcAttachPin(PIN_VERDE, canalverde);
   ledcWrite(canalverde, 0);
 
-  // Amarillo
   ledcSetup(canalamarillo, freqPWM, resPWM);
   ledcAttachPin(PIN_AMARILLO, canalamarillo);
   ledcWrite(canalamarillo, 0);
 }
 
-
-// 6) LÓGICA DEL SEMÁFORO SEGÚN TEMPERATURA (UMBRales)
-
-// Regla pedida:
-//  - t < 22.0  => VERDE
-//  - 22.0 <= t < 25.0 => AMARILLO
-//  - t >= 25.0 => ROJO
-// Enciendo un LED a 100% (1023) y apago los otros (0).
+// 6) Semáforo de temperatura (no toca la lectura; solo actúa con el valor obtenido)
 void semaforoTemperatura(float t) {
   if (t < 22.0) {
-    // Verde
     ledcWrite(canalverde, 1023);
     ledcWrite(canalamarillo, 0);
     ledcWrite(canalrojo, 0);
     Serial.println("Estado: VERDE (t < 22.0 °C)");
-  }
-  else if (t >= 22.0 && t < 25.0) {
-    // Amarillo
+  } else if (t >= 22.0 && t < 25.0) {
     ledcWrite(canalverde, 0);
     ledcWrite(canalamarillo, 1023);
     ledcWrite(canalrojo, 0);
     Serial.println("Estado: AMARILLO (22.0 °C <= t < 25.0 °C)");
-  }
-  else {
-    // Rojo
+  } else {
     ledcWrite(canalverde, 0);
     ledcWrite(canalamarillo, 0);
     ledcWrite(canalrojo, 1023);
@@ -102,44 +61,35 @@ void semaforoTemperatura(float t) {
   }
 }
 
-
-// 7) SETUP DEL PROGRAMA
-
-// Configuro Serial, pines, interrupción del botón y PWM de los LEDs.
+// 7) Setup (idéntico en esencia: serial, pines, attachInterrupt y mensaje)
 void setup() {
-  Serial.begin(115200);                 // Para ver lecturas y mensajes en el monitor serie
-  pinMode(PIN_SENSOR, INPUT);           // El LM35 entrega un voltaje analógico proporcional a °C
-  pinMode(PIN_BOTON, INPUT_PULLUP);     // Uso pull-up interno. Conecto el botón a GND (activo en LOW).
-  attachInterrupt(PIN_BOTON, botonISR, FALLING);  // Interrumpe en flanco de bajada (cuando presiono)
+  Serial.begin(115200);               // comunicación serial
+  pinMode(PIN_SENSOR, INPUT);         // pin del sensor como entrada
+  pinMode(PIN_BOTON, INPUT_PULLUP);   // botón con resistencia interna
+  attachInterrupt(PIN_BOTON, botonISR, FALLING); // interrupción al presionar
 
-  initLeds();                           // Dejo el semáforo listo (apagado al inicio)
-
-  Serial.println("Listo: presiona el botón para leer la temperatura y actualizar el semáforo.");
+  initLeds();
+  Serial.println("Listo: Presiona el botón para leer la temperatura.");
 }
 
-
-// 8) LOOP PRINCIPAL
-
-// Solo actúo cuando la ISR marcó que se presionó el botón.
-// Entonces leo el ADC, convierto a voltaje y luego a °C (LM35: 10 mV por °C).
+// 8) Loop (LECTURA DEL SENSOR = IGUALITA A PARTE A)
 void loop() {
-  if (botonEvento) {                    // ¿Hubo pulsación válida del botón?
-    botonEvento = false;                // Consumo el evento (lo limpio)
+  if (botonPresionado) {
+    botonPresionado = false; // limpio el evento
 
-    //Lectura del sensor 
-    int lectura = analogRead(PIN_SENSOR);          // Valor ADC 0..4095 (12 bits en ESP32)
-    float voltaje = lectura * (3.3 / 4095.0);      // Paso a voltios (asumiendo referencia ~3.3V)
-    temperatura = voltaje * 100.0;                 // LM35: 10 mV/°C => 0.01 V/°C => °C = V * 100
-
-    //Muestro por Serial
+    // —— BLOQUE IDÉNTICO A PARTE A ——
+    unsigned int lectura = analogRead(PIN_SENSOR);     // leo el ADC (0-4095)
+    float voltaje = lectura * (5 / 4095.0);            // paso a voltios (MISMA FÓRMULA QUE PARTE A)
+    float temperatura = voltaje * 100.0;               // LM35: 10mV = 1°C (MISMA FÓRMULA)
     Serial.print("Temperatura: ");
-    Serial.print(temperatura, 2);                  // imprimo con 2 decimales
+    Serial.print(temperatura);
     Serial.println(" °C");
+    // ————————————————
 
-    //Actualizo semáforo
+    // Semáforo (usa la temperatura ya calculada sin tocar la lógica del sensor)
     semaforoTemperatura(temperatura);
   }
 
-  // Pequeña pausa opcional para “respirar” (no afecta la lógica de botón + ISR)
+  // Pequeña pausa opcional
   delay(1);
 }
