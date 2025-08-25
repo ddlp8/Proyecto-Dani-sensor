@@ -1,0 +1,145 @@
+// Proyecto Digital - Parte A, B y C
+// A: Leer LM35 con botón (antirrebote)
+// B: Semáforo de temperatura con LEDs PWM
+// C: Servo “reloj de temperatura” según semáforo
+// Daniela López
+
+
+#include <Arduino.h>  
+
+
+// 1) DEFINICIÓN DE PINES
+
+// Mantengo los mismos pines de la programación larga
+#define PIN_SENSOR   34   // Entrada analógica para LM35
+#define PIN_BOTON    15   // Botón para iniciar la lectura
+#define PIN_ROJO     21   // LED rojo del semáforo
+#define PIN_VERDE    22   // LED verde del semáforo
+#define PIN_AMARILLO 17   // LED amarillo del semáforo
+#define PIN_SERVO    13   // Servo motor que indica la temperatura
+
+
+// 2) CONFIGURACIÓN DE PWM
+
+// Uso los mismos canales y frecuencia que en la programación larga
+#define canalRojo      8
+#define canalVerde     9
+#define canalAmarillo 10
+#define canalServo     0  // Canal PWM para servo
+#define freqPWM        50 // 50 Hz para LEDs y servo
+#define resPWM         10 // Resolución de 10 bits (0..1023)
+
+
+// 3) VARIABLES GLOBALES
+
+volatile bool botonEvento = false;           // Marca si el botón fue presionado
+volatile unsigned long ultimoTiempo = 0;     // Último tiempo de pulsación válida (antirrebote)
+const unsigned long DEBOUNCE_MS = 150;       // Tiempo mínimo entre pulsaciones para filtrar rebotes
+float temperatura = 0;                        // Variable donde guardo la temperatura en °C
+
+
+// 4) ISR DEL BOTÓN CON ANTIRREBOTE
+
+// Esta función se ejecuta automáticamente al presionar el botón (flanco de bajada)
+// Solo marca evento si pasó suficiente tiempo desde la última pulsación
+void IRAM_ATTR botonISR() {
+  unsigned long ahora = millis();           // Momento actual
+  if (ahora - ultimoTiempo > DEBOUNCE_MS) { // Filtra rebotes mecánicos
+    botonEvento = true;                     // Marco que hay un evento pendiente
+    ultimoTiempo = ahora;                   // Actualizo tiempo de última pulsación
+  }
+}
+
+
+// 5) INICIALIZACIÓN DE LEDS Y SERVO
+
+// Configuro canales PWM para cada LED y el servo
+// Al inicio los LEDs están apagados y el servo en posición neutra (aprox 90°)
+void initLeds() {
+  // LED rojo
+  ledcSetup(canalRojo, freqPWM, resPWM);
+  ledcAttachPin(PIN_ROJO, canalRojo);
+  ledcWrite(canalRojo, 0); // Apagado
+
+  // LED verde
+  ledcSetup(canalVerde, freqPWM, resPWM);
+  ledcAttachPin(PIN_VERDE, canalVerde);
+  ledcWrite(canalVerde, 0); // Apagado
+
+  // LED amarillo
+  ledcSetup(canalAmarillo, freqPWM, resPWM);
+  ledcAttachPin(PIN_AMARILLO, canalAmarillo);
+  ledcWrite(canalAmarillo, 0); // Apagado
+
+  // Servo motor
+  ledcSetup(canalServo, freqPWM, resPWM);
+  ledcAttachPin(PIN_SERVO, canalServo);
+  ledcWrite(canalServo, 128); // Posición media inicial (aprox 90°)
+}
+
+// 6) FUNCION PARA ACTUALIZAR SEMÁFORO Y SERVO SEGÚN TEMPERATURA
+
+void actualizarSemaforoYServo(float t) {
+  if (t < 22.0) {
+    // Verde: t < 22°C
+    ledcWrite(canalVerde, 1023);   // LED verde encendido
+    ledcWrite(canalAmarillo, 0);   // Amarillo apagado
+    ledcWrite(canalRojo, 0);       // Rojo apagado
+    ledcWrite(canalServo, 128);    // Servo en 45° (aprox)
+    Serial.println("Estado: VERDE, Servo 45°");
+  }
+  else if (t >= 22.0 && t < 25.0) {
+    // Amarillo: 22°C ≤ t < 25°C
+    ledcWrite(canalVerde, 0);      
+    ledcWrite(canalAmarillo, 1023);
+    ledcWrite(canalRojo, 0);
+    ledcWrite(canalServo, 77);     // Servo en 90° (aprox)
+    Serial.println("Estado: AMARILLO, Servo 90°");
+  }
+  else {
+    // Rojo: t ≥ 25°C
+    ledcWrite(canalVerde, 0);
+    ledcWrite(canalAmarillo, 0);
+    ledcWrite(canalRojo, 1023);
+    ledcWrite(canalServo, 26);     // Servo en 135° (aprox)
+    Serial.println("Estado: ROJO, Servo 135°");
+  }
+}
+
+
+// 7) SETUP
+
+void setup() {
+  Serial.begin(115200);              // Inicia comunicación Serial
+  pinMode(PIN_SENSOR, INPUT);        // LM35 como entrada analógica
+  pinMode(PIN_BOTON, INPUT_PULLUP);  // Botón con pull-up interno
+  attachInterrupt(PIN_BOTON, botonISR, FALLING); // Interrupción en flanco de bajada
+
+  initLeds();                        // Inicializo LEDs y servo
+
+  Serial.println("Listo: presiona el botón para leer temperatura y mover semáforo + servo.");
+}
+
+
+// 8) LOOP PRINCIPAL
+
+void loop() {
+  if (botonEvento) {                 // Si el botón fue presionado y validado
+    botonEvento = false;             // Limpio el evento para no repetirlo
+
+    // LEER EL SENSOR LM35
+    int lectura = analogRead(PIN_SENSOR);      // 0..4095 (12 bits ESP32)
+    float voltaje = lectura * (3.3 / 4095.0);  // Paso a voltios
+    temperatura = voltaje * 100.0;            // °C (LM35: 10 mV/°C)
+
+    //MOSTRAR POR SERIAL
+    Serial.print("Temperatura: ");
+    Serial.print(temperatura, 2);             // Dos decimales
+    Serial.println(" °C");
+
+    //ACTUALIZAR SEMÁFORO Y SERVO
+    actualizarSemaforoYServo(temperatura);
+  }
+
+  delay(1); // Pequeña pausa
+}
