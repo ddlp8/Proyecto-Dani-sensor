@@ -3,36 +3,68 @@
 // Autora: Daniela López
 // Fecha: 17/08/2025
 
-#include <Arduino.h>
+#include <Arduino.h> 
 
 // Pines
-#define PIN_SENSOR 34   // LM35 conectado al pin 34
-#define PIN_BOTON  15   // Botón en pin 15
+#define PIN_SENSOR 34   // Defino el pin 34 como la entrada analógica del LM35 (sensor de temperatura)
+#define PIN_BOTON  15   // Defino el pin 15 como la entrada para el botón
 
 // Variables
-bool botonPresionado = false;
+bool botonPresionado = false; 
+// Creo una variable tipo bandera (true/false). 
+// Sirve para detectar cuándo se presiona el botón, evitando que se lea todo el tiempo.
 
+// ISR (rutina de interrupción)
 void IRAM_ATTR botonISR() {
-  botonPresionado = true; // cuando presiono el botón marco mi evento
+  botonPresionado = true; // Cuando presiono el botón, activo mi evento marcando esta variable como verdadera.
 }
 
+// Configuración inicial
 void setup() {
-  Serial.begin(115200);         // comunicación serial
-  pinMode(PIN_SENSOR, INPUT);   // pin del sensor como entrada
-  pinMode(PIN_BOTON, INPUT_PULLUP); // botón con resistencia interna
-  attachInterrupt(PIN_BOTON, botonISR, FALLING); // interrupción al presionar
-  Serial.println("Listo: Presiona el botón para leer la temperatura.");
+  Serial.begin(115200);         
+  // Inicio la comunicación serial a 115200 baudios para enviar la temperatura a la PC y poder verla en el monitor serial.
+
+  pinMode(PIN_SENSOR, INPUT);   
+  // Configuro el pin del LM35 como entrada porque el ESP32 solo recibe la señal del sensor.
+
+  pinMode(PIN_BOTON, INPUT_PULLUP); 
+  // Configuro el pin del botón con resistencia pull-up interna. 
+  // Esto evita usar una resistencia externa y asegura que el pin no quede “flotando”.
+
+  attachInterrupt(PIN_BOTON, botonISR, FALLING); 
+  // Uso una interrupción para que, al detectar una transición de ALTO a BAJO (cuando el botón se presiona), 
+  // se ejecute automáticamente la función botonISR().
+
+  Serial.println("Listo: Presiona el botón para leer la temperatura."); 
+  // Mensaje inicial para el usuario en el monitor serial.
 }
 
+// Bucle principal
 void loop() {
-  if (botonPresionado) {
-    botonPresionado = false; // limpio el evento
-    unsigned int lectura = analogRead(PIN_SENSOR);          // leo el ADC (0-4095)
-    float voltaje = lectura * (5 / 4095.0);      // paso a voltios
-    float temperatura = voltaje * 100.0;           // LM35: 10mV = 1°C
+  if (botonPresionado) { 
+    // Si la bandera está activada (es decir, el botón fue presionado)
+    
+    botonPresionado = false; 
+    // ... limpio el evento volviendo la variable a false para esperar la próxima lectura.
+
+    unsigned int lectura = analogRead(PIN_SENSOR);          
+    // Leo el valor analógico del sensor LM35 (valor entre 0 y 4095 porque el ESP32 tiene resolución de 12 bits en ADC).
+
+    float voltaje = lectura * (5 / 4095.0);      
+    // Convierto el valor leído en voltaje real. 
+    // El ADC divide la señal de 0 a 5V en 4096 pasos (0-4095). 
+    // Multiplico el valor leído por la proporción para obtener el voltaje en volts.
+
+    float temperatura = voltaje * 100.0;           
+    // El LM35 entrega 10 mV por cada °C. 
+    // Como 1 V = 1000 mV, entonces 1 V equivale a 100 °C. 
+    // Por eso multiplico el voltaje por 100 para obtener la temperatura.
+
     Serial.print("Temperatura: ");
     Serial.print(temperatura);
     Serial.println(" °C");
+    // Imprimo el valor de la temperatura en grados Celsius en el monitor serial.
   }
 }
+
 
