@@ -1,32 +1,42 @@
 // Proyecto Digital - Parte A y B
-// A: Leer LM35 solo cuando presiono un botón (idéntico a Parte A)
+// A: Leer LM35 solo cuando presiono un botón 
 // B: Semáforo de temperatura con 3 LEDs por PWM
 
-#include <Arduino.h>
+#include <Arduino.h> 
 
-// 1) PINES (mismos nombres que Parte A donde aplica)
-#define PIN_SENSOR   34   // LM35 conectado al pin 34
-#define PIN_BOTON    15   // Botón en pin 15
-#define PIN_ROJO     19
-#define PIN_VERDE    23
-#define PIN_AMARILLO 21
 
-// 2) PWM (sin cambiar nombres del sensor/botón)
+// 1) PINES
+#define PIN_SENSOR   34   // Pin analógico donde está conectado el LM35
+#define PIN_BOTON    15   // Pin digital para el botón
+#define PIN_ROJO     19   // Pin para LED rojo
+#define PIN_VERDE    23   // Pin para LED verde
+#define PIN_AMARILLO 21   // Pin para LED amarillo
+
+
+// 2) PWM (configuración de canales)
+// En el ESP32 los LEDs se controlan mejor con PWM (control de intensidad).
+// Cada LED tiene su propio canal para poder manejarlo de forma independiente.
 #define canalrojo      8
 #define canalverde     9
 #define canalamarillo 10
-#define freqPWM       50
-#define resPWM        10   // 10 bits => 0..1023
+#define freqPWM       50   // Frecuencia del PWM (50 Hz suficiente para LEDs)
+#define resPWM        10   // Resolución de 10 bits: valores entre 0 y 1023
 
-// 3) VARIABLES (exactamente como Parte A para el botón)
-bool botonPresionado = false;  // MISMO NOMBRE Y TIPO QUE EN PARTE A
 
-// 4) ISR (exacta en lógica: solo marca el flag)
+// 3) VARIABLES
+bool botonPresionado = false;  
+// Bandera para detectar la pulsación del botón mediante la interrupción.
+
+
+// 4) ISR
+// La interrupción solo marca la bandera, no hace más lógica.
 void IRAM_ATTR botonISR() {
-  botonPresionado = true; // cuando presiono el botón marco mi evento
+  botonPresionado = true; // Indica que el botón fue presionado
 }
 
+
 // 5) Inicializar LEDs (PWM)
+// Asigno cada pin a un canal de PWM y los inicio apagados (valor = 0).
 void initLeds() {
   ledcSetup(canalrojo, freqPWM, resPWM);
   ledcAttachPin(PIN_ROJO, canalrojo);
@@ -41,55 +51,61 @@ void initLeds() {
   ledcWrite(canalamarillo, 0);
 }
 
-// 6) Semáforo de temperatura (no toca la lectura; solo actúa con el valor obtenido)
+
+// 6) Semáforo de temperatura
+// Según la temperatura, enciende un LED específico:
+// - Verde: temperatura baja (< 22 °C)
+// - Amarillo: temperatura media (22 °C a 25 °C)
+// - Rojo: temperatura alta (>= 25 °C)
 void semaforoTemperatura(float t) {
   if (t < 22.0) {
-    ledcWrite(canalverde, 1023);
-    ledcWrite(canalamarillo, 0);
-    ledcWrite(canalrojo, 0);
+    ledcWrite(canalverde, 1023);   // Verde al máximo brillo
+    ledcWrite(canalamarillo, 0);   // Apagado
+    ledcWrite(canalrojo, 0);       // Apagado
     Serial.println("Estado: VERDE (t < 22.0 °C)");
   } else if (t >= 22.0 && t < 25.0) {
     ledcWrite(canalverde, 0);
-    ledcWrite(canalamarillo, 1023);
+    ledcWrite(canalamarillo, 1023); // Amarillo encendido
     ledcWrite(canalrojo, 0);
     Serial.println("Estado: AMARILLO (22.0 °C <= t < 25.0 °C)");
   } else {
     ledcWrite(canalverde, 0);
     ledcWrite(canalamarillo, 0);
-    ledcWrite(canalrojo, 1023);
+    ledcWrite(canalrojo, 1023);    // Rojo encendido
     Serial.println("Estado: ROJO (t >= 25.0 °C)");
   }
 }
 
-// 7) Setup (idéntico en esencia: serial, pines, attachInterrupt y mensaje)
-void setup() {
-  Serial.begin(115200);               // comunicación serial
-  pinMode(PIN_SENSOR, INPUT);         // pin del sensor como entrada
-  pinMode(PIN_BOTON, INPUT_PULLUP);   // botón con resistencia interna
-  attachInterrupt(PIN_BOTON, botonISR, FALLING); // interrupción al presionar
 
-  initLeds();
+// 7) Setup (configuración inicial)
+// Además, inicializa los LEDs con la función initLeds().
+void setup() {
+  Serial.begin(115200);               // Comunicación serial
+  pinMode(PIN_SENSOR, INPUT);         // Sensor LM35 como entrada
+  pinMode(PIN_BOTON, INPUT_PULLUP);   // Botón con resistencia interna
+  attachInterrupt(PIN_BOTON, botonISR, FALLING); // Interrupción al presionar
+
+  initLeds(); // Configuro LEDs
   Serial.println("Listo: Presiona el botón para leer la temperatura.");
 }
 
-// 8) Loop (LECTURA DEL SENSOR = IGUALITA A PARTE A)
+
+// 8) Loop principal
+// la llamada a semaforoTemperatura() para encender el LED según la temperatura.
 void loop() {
   if (botonPresionado) {
     botonPresionado = false; // limpio el evento
 
-    // —— BLOQUE IDÉNTICO A PARTE A ——
-    unsigned int lectura = analogRead(PIN_SENSOR);     // leo el ADC (0-4095)
-    float voltaje = lectura * (5 / 4095.0);            // paso a voltios (MISMA FÓRMULA QUE PARTE A)
-    float temperatura = voltaje * 100.0;               // LM35: 10mV = 1°C (MISMA FÓRMULA)
+    unsigned int lectura = analogRead(PIN_SENSOR);     // Leo el ADC (0-4095)
+    float voltaje = lectura * (5 / 4095.0);            // Convierto a voltaje
+    float temperatura = voltaje * 100.0;               // LM35: 10 mV = 1 °C
     Serial.print("Temperatura: ");
     Serial.print(temperatura);
     Serial.println(" °C");
-    // ————————————————
 
-    // Semáforo (usa la temperatura ya calculada sin tocar la lógica del sensor)
+    // Semáforo con LEDs en función de la temperatura medida
     semaforoTemperatura(temperatura);
   }
 
-  // Pequeña pausa opcional
   delay(1);
 }
